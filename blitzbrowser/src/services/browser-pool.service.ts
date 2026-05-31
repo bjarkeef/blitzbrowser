@@ -21,7 +21,7 @@ export interface BrowserPoolStatus {
   max_browser_instances: number;
   tags: { [key: string]: string; };
   active_instances: number;
-  oldest_age_ms: number;
+  oldest_age_ms: number | null;
   instances: BrowserPoolInstanceInfo[];
 }
 
@@ -66,7 +66,7 @@ export class BrowserPoolService extends EventEmitter<PoolServiceEvents> implemen
       max_browser_instances: this.max_browser_instances,
       tags: this.#tags,
       active_instances: instances.length,
-      oldest_age_ms: instances.reduce((max, i) => Math.max(max, i.age_ms), 0),
+      oldest_age_ms: instances.length > 0 ? instances.reduce((max, i) => Math.max(max, i.age_ms), 0) : null,
       instances,
     };
   }
