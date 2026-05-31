@@ -2,7 +2,7 @@ FROM ghcr.io/puppeteer/puppeteer:latest
 
 USER root
 
-RUN apt-get install -y xvfb x11vnc fluxbox tini fonts-recommended fonts-noto-color-emoji
+RUN apt-get update && apt-get install -y xvfb x11vnc fluxbox tini fonts-recommended fonts-noto-color-emoji && rm -rf /var/lib/apt/lists/*
 RUN fc-cache -f -v
 
 RUN mkdir -p /var/cache/fontconfig

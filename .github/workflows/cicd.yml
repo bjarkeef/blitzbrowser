@@ -17,12 +17,16 @@ jobs:
       - uses: actions/github-script@v8
         with:
           script: |
-            github.rest.git.createRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: 'refs/tags/${{ steps.package_version.outputs.VERSION }}',
-              sha: context.sha
-            })
+            try {
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: 'refs/tags/${{ steps.package_version.outputs.VERSION }}',
+                sha: context.sha
+              })
+            } catch (e) {
+              if (e.status === 422) { core.info("Tag already exists, skipping.") } else { throw e }
+            }
   build-docker-images:
     runs-on: ubuntu-latest
     needs: create-tag
