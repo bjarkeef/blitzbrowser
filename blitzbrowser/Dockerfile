@@ -25,11 +25,14 @@ COPY ./package.json ./package.json
 
 RUN npm i
 
-# Download the Chrome build THIS puppeteer version expects. The base image
-# bundles a Chrome, but npm i may install a puppeteer whose required Chrome
-# revision differs, leaving Chrome "not found at executablePath" and every CDP
-# connect failing with code=1005. Installing explicitly keeps them in lockstep.
-RUN rm -rf /home/pptruser/.cache/puppeteer/chrome && npx puppeteer browsers install chrome
+# npm i swaps in puppeteer ^24.6.0 whose executablePath() points to a versioned
+# cache dir that the base image never populated, so Chrome is "not found" and
+# every CDP connect fails with code=1005. The base image also sets
+# PUPPETEER_SKIP_DOWNLOAD=true, which makes `puppeteer browsers install` no-op
+# (it returned in ~2s downloading nothing). Clear the skip flags and force a
+# real download via @puppeteer/browsers into puppeteer's own cache dir, pinned
+# to the exact buildId puppeteer expects. Single line: no continuations.
+RUN rm -rf /home/pptruser/.cache/puppeteer/chrome; BUILDID=$(node -e "const p=require('puppeteer');console.log(require('puppeteer-core/lib/cjs/puppeteer/revisions.js').PUPPETEER_REVISIONS.chrome)"); echo "Installing chrome@${BUILDID}"; env -u PUPPETEER_SKIP_DOWNLOAD -u PUPPETEER_SKIP_CHROMIUM_DOWNLOAD npx --yes @puppeteer/browsers install "chrome@${BUILDID}" --path /home/pptruser/.cache/puppeteer
 # Fail the BUILD (not silently at runtime) if Chrome is missing or won't exec.
 # BlitzBrowser launches with executablePath=process.env.BROWSER_EXECUTABLE_PATH;
 # when unset, puppeteer uses executablePath() — the path we assert here.
