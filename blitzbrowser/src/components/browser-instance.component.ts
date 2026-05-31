@@ -146,6 +146,8 @@ export class BrowserInstance extends EventEmitter<BrowserInstanceEvents> {
 
   readonly #user_data_folder: string;
 
+  readonly #created_at = new Date().toISOString();
+
   #connection_options: ConnectionOptions | undefined;
 
   #tunnel: Tunnel;
@@ -177,6 +179,10 @@ export class BrowserInstance extends EventEmitter<BrowserInstanceEvents> {
 
   get in_use() {
     return typeof this.#connected_at === 'string';
+  }
+
+  get created_at() {
+    return this.#created_at;
   }
 
   get cdp_terminated() {

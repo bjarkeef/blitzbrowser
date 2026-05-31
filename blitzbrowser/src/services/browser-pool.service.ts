@@ -3,9 +3,17 @@ import { BrowserInstance } from 'src/components/browser-instance.component';
 import * as EventEmitter from 'events';
 import { ModuleRef } from '@nestjs/core';
 import { MaxBrowserReachedError } from 'src/errors/max-browser-reached.error';
+import { findStaleInstanceIds } from './browser-reaper.util';
 
 type PoolServiceEvents = {
   browser_instance_created: [BrowserInstance];
+}
+
+export interface BrowserPoolInstanceInfo {
+  id: string;
+  created_at: string;
+  age_ms: number;
+  in_use: boolean;
 }
 
 export interface BrowserPoolStatus {
@@ -13,6 +21,9 @@ export interface BrowserPoolStatus {
   started_at: string;
   max_browser_instances: number;
   tags: { [key: string]: string; };
+  active_instances: number;
+  oldest_age_ms: number | null;
+  instances: BrowserPoolInstanceInfo[];
 }
 
 @Injectable()
@@ -25,6 +36,9 @@ export class BrowserPoolService extends EventEmitter<PoolServiceEvents> implemen
   readonly #tags: { [key: string]: string; } = {};
 
   readonly max_browser_instances = parseInt(process.env.MAX_BROWSER_INSTANCES || '99');
+  readonly #max_lifetime_ms = parseInt(process.env.BROWSER_MAX_LIFETIME_MS || '3600000');
+  readonly #reap_interval_ms = parseInt(process.env.BROWSER_REAP_INTERVAL_MS || '60000');
+  #reap_timer: NodeJS.Timeout | undefined;
 
   readonly #browser_instances = new Map<string, BrowserInstance>();
 
@@ -43,11 +57,21 @@ export class BrowserPoolService extends EventEmitter<PoolServiceEvents> implemen
   }
 
   get status(): BrowserPoolStatus {
+    const now = Date.now();
+    const instances: BrowserPoolInstanceInfo[] = this.browser_instances.map((i) => ({
+      id: i.id,
+      created_at: i.created_at,
+      age_ms: now - new Date(i.created_at).getTime(),
+      in_use: i.in_use,
+    }));
     return {
       id: this.#id,
       started_at: this.#started_at,
       max_browser_instances: this.max_browser_instances,
-      tags: this.#tags
+      tags: this.#tags,
+      active_instances: instances.length,
+      oldest_age_ms: instances.length > 0 ? instances.reduce((max, i) => Math.max(max, i.age_ms), 0) : null,
+      instances,
     };
   }
 
@@ -80,10 +104,34 @@ export class BrowserPoolService extends EventEmitter<PoolServiceEvents> implemen
       this.logger.log('SIGTERM received');
       this.shutdown();
     });
+
+    if (this.#max_lifetime_ms > 0) {
+      this.logger.log(
+        `Max-lifetime reaper enabled: ${this.#max_lifetime_ms}ms cap, sweeping every ${this.#reap_interval_ms}ms.`,
+      );
+      this.#reap_timer = setInterval(() => this.reapStaleInstances(), this.#reap_interval_ms);
+      this.#reap_timer.unref();
+    }
   }
 
   getBrowserInstanceById(id: string): BrowserInstance | undefined {
     return this.#browser_instances.get(id);
+  }
+
+  reapStaleInstances() {
+    const staleIds = findStaleInstanceIds(
+      this.browser_instances.map((i) => ({ id: i.id, created_at: i.created_at, in_use: i.in_use })),
+      Date.now(),
+      this.#max_lifetime_ms,
+    );
+    for (const id of staleIds) {
+      const instance = this.getBrowserInstanceById(id);
+      if (!instance) continue;
+      this.logger.warn(
+        `Reaping stale browser instance ${id} (exceeded max lifetime ${this.#max_lifetime_ms}ms).`,
+      );
+      void instance.close();
+    }
   }
 
   createBrowserInstance(id: string = crypto.randomUUID()) {
@@ -118,6 +166,11 @@ export class BrowserPoolService extends EventEmitter<PoolServiceEvents> implemen
     }
 
     this.#sigterm_received = true;
+
+    if (this.#reap_timer) {
+      clearInterval(this.#reap_timer);
+      this.#reap_timer = undefined;
+    }
 
     this.logger.log('Shutdown requested.');
 
