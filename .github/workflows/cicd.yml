@@ -30,16 +30,14 @@ jobs:
       contents: read
       packages: write
     strategy:
+      fail-fast: false
       matrix:
         include:
           - name: blitzbrowser
             image_suffix: blitzbrowser
             dockerfile: ./blitzbrowser/Dockerfile
             context: ./blitzbrowser
-          - name: dashboard
-            image_suffix: dashboard
-            dockerfile: ./dashboard/Dockerfile
-            context: ./dashboard
+          # dashboard image intentionally not built — not deployed; upstream pnpm lockfile fails --frozen-lockfile.
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
