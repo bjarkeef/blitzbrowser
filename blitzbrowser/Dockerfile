@@ -25,6 +25,12 @@ COPY ./package.json ./package.json
 
 RUN npm i
 
+# Download the Chrome build THIS puppeteer version expects. The base image
+# bundles a Chrome, but npm i may install a puppeteer whose required Chrome
+# revision differs, leaving Chrome "not found at executablePath" and every CDP
+# connect failing with code=1005. Installing explicitly keeps them in lockstep.
+RUN npx puppeteer browsers install chrome
+
 COPY ./src ./src
 COPY ./tsconfig.json ./tsconfig.json
 
