@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "rm -rf ./dist && nest build",
+    "test": "jest",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix"
   },
