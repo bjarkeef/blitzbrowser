@@ -25,22 +25,31 @@ COPY ./package.json ./package.json
 
 RUN npm i
 
-# npm i swaps in puppeteer ^24.6.0 whose executablePath() points to a versioned
-# cache dir that the base image never populated, so Chrome is "not found" and
-# every CDP connect fails with code=1005. The base image also sets
-# PUPPETEER_SKIP_DOWNLOAD=true, which makes `puppeteer browsers install` no-op
-# (it returned in ~2s downloading nothing). Clear the skip flags and force a
-# real download via @puppeteer/browsers into puppeteer's own cache dir, pinned
-# to the exact buildId puppeteer expects. Single line: no continuations.
+# Ensure a usable Chrome exists at puppeteer.executablePath(). The base image
+# ships a complete Chrome for ITS pinned puppeteer, but `npm i` may install a
+# different puppeteer whose expected buildId differs, and re-installing that
+# buildId can extract incompletely (binary missing) -> code=1005 at runtime.
+# Strategy: try a clean install of the expected buildId; if the binary still
+# isn't present, fall back to ANY complete chrome already in the cache by
+# symlinking the expected dir to it. Diagnostics are printed throughout.
 RUN set -eux; \
-    env | grep -i puppeteer || echo "no PUPPETEER_* env"; \
-    PV=$(node -e "console.log(require('puppeteer/package.json').version)"); echo "puppeteer=$PV"; \
-    EP=$(node -e "console.log(require('puppeteer').executablePath())"); echo "executablePath=$EP"; \
-    BUILDID=$(node -e "console.log(require('puppeteer-core/lib/cjs/puppeteer/revisions.js').PUPPETEER_REVISIONS.chrome)"); echo "buildId=$BUILDID"; \
-    echo '--- cache before ---'; ls -laR /home/pptruser/.cache/puppeteer 2>/dev/null | head -40 || echo none; \
-    rm -rf /home/pptruser/.cache/puppeteer/chrome; \
-    npx --yes @puppeteer/browsers install "chrome@${BUILDID}" --path /home/pptruser/.cache/puppeteer; \
-    echo '--- cache after ---'; ls -laR /home/pptruser/.cache/puppeteer/chrome | head -40
+    EP=$(node -e "console.log(require('puppeteer').executablePath())"); echo "want=$EP"; \
+    WANT_REV_DIR=$(dirname "$(dirname "$EP")"); echo "wantRevDir=$WANT_REV_DIR"; \
+    BUILDID=$(basename "$WANT_REV_DIR" | sed 's/^linux-//'); echo "buildId=$BUILDID"; \
+    rm -rf /home/pptruser/.cache/puppeteer/chrome/linux-"$BUILDID" /home/pptruser/.cache/puppeteer/chrome/*.zip; \
+    (npx --yes @puppeteer/browsers install "chrome@${BUILDID}" --path /home/pptruser/.cache/puppeteer 2>&1 || echo "install-cmd-failed"); \
+    rm -f /home/pptruser/.cache/puppeteer/chrome/*.zip; \
+    if [ ! -x "$EP" ]; then \
+      echo "expected binary missing; searching cache for any complete chrome"; \
+      ALT=$(find /home/pptruser/.cache/puppeteer -type f -name chrome -path '*chrome-linux64/chrome' | head -1); \
+      echo "alt=$ALT"; \
+      if [ -n "$ALT" ] && [ "$ALT" != "$EP" ]; then \
+        ALT_REV_DIR=$(dirname "$(dirname "$ALT")"); \
+        echo "symlinking $WANT_REV_DIR -> $ALT_REV_DIR"; \
+        rm -rf "$WANT_REV_DIR"; ln -s "$ALT_REV_DIR" "$WANT_REV_DIR"; \
+      fi; \
+    fi; \
+    echo '--- final cache tree ---'; find /home/pptruser/.cache/puppeteer/chrome -maxdepth 3 \( -type d -o -name chrome \) | sort
 # Fail the BUILD (not silently at runtime) if Chrome is missing or won't exec.
 # BlitzBrowser launches with executablePath=process.env.BROWSER_EXECUTABLE_PATH;
 # when unset, puppeteer uses executablePath() — the path we assert here.
