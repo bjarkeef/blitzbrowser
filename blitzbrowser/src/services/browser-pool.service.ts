@@ -8,11 +8,21 @@ type PoolServiceEvents = {
   browser_instance_created: [BrowserInstance];
 }
 
+export interface BrowserPoolInstanceInfo {
+  id: string;
+  created_at: string;
+  age_ms: number;
+  in_use: boolean;
+}
+
 export interface BrowserPoolStatus {
   id: string;
   started_at: string;
   max_browser_instances: number;
   tags: { [key: string]: string; };
+  active_instances: number;
+  oldest_age_ms: number;
+  instances: BrowserPoolInstanceInfo[];
 }
 
 @Injectable()
@@ -43,11 +53,21 @@ export class BrowserPoolService extends EventEmitter<PoolServiceEvents> implemen
   }
 
   get status(): BrowserPoolStatus {
+    const now = Date.now();
+    const instances: BrowserPoolInstanceInfo[] = this.browser_instances.map((i) => ({
+      id: i.id,
+      created_at: i.created_at,
+      age_ms: now - new Date(i.created_at).getTime(),
+      in_use: i.in_use,
+    }));
     return {
       id: this.#id,
       started_at: this.#started_at,
       max_browser_instances: this.max_browser_instances,
-      tags: this.#tags
+      tags: this.#tags,
+      active_instances: instances.length,
+      oldest_age_ms: instances.reduce((max, i) => Math.max(max, i.age_ms), 0),
+      instances,
     };
   }
 
