@@ -32,7 +32,15 @@ RUN npm i
 # (it returned in ~2s downloading nothing). Clear the skip flags and force a
 # real download via @puppeteer/browsers into puppeteer's own cache dir, pinned
 # to the exact buildId puppeteer expects. Single line: no continuations.
-RUN rm -rf /home/pptruser/.cache/puppeteer/chrome; BUILDID=$(node -e "const p=require('puppeteer');console.log(require('puppeteer-core/lib/cjs/puppeteer/revisions.js').PUPPETEER_REVISIONS.chrome)"); echo "Installing chrome@${BUILDID}"; env -u PUPPETEER_SKIP_DOWNLOAD -u PUPPETEER_SKIP_CHROMIUM_DOWNLOAD npx --yes @puppeteer/browsers install "chrome@${BUILDID}" --path /home/pptruser/.cache/puppeteer
+RUN set -eux; \
+    env | grep -i puppeteer || echo "no PUPPETEER_* env"; \
+    PV=$(node -e "console.log(require('puppeteer/package.json').version)"); echo "puppeteer=$PV"; \
+    EP=$(node -e "console.log(require('puppeteer').executablePath())"); echo "executablePath=$EP"; \
+    BUILDID=$(node -e "console.log(require('puppeteer-core/lib/cjs/puppeteer/revisions.js').PUPPETEER_REVISIONS.chrome)"); echo "buildId=$BUILDID"; \
+    echo '--- cache before ---'; ls -laR /home/pptruser/.cache/puppeteer 2>/dev/null | head -40 || echo none; \
+    rm -rf /home/pptruser/.cache/puppeteer/chrome; \
+    npx --yes @puppeteer/browsers install "chrome@${BUILDID}" --path /home/pptruser/.cache/puppeteer; \
+    echo '--- cache after ---'; ls -laR /home/pptruser/.cache/puppeteer/chrome | head -40
 # Fail the BUILD (not silently at runtime) if Chrome is missing or won't exec.
 # BlitzBrowser launches with executablePath=process.env.BROWSER_EXECUTABLE_PATH;
 # when unset, puppeteer uses executablePath() — the path we assert here.
