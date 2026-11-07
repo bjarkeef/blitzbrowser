@@ -59,6 +59,8 @@ jobs:
           push: true
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
+          # `latest` moves only on main, so a branch build can't change what an
+          # unpinned deploy pulls. Deploy by the version tag.
           tags: |
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.image_suffix }}:latest
+            ${{ github.ref == 'refs/heads/main' && format('ghcr.io/{0}/{1}:latest', github.repository_owner, matrix.image_suffix) || '' }}
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image_suffix }}:${{ steps.package_version.outputs.VERSION }}

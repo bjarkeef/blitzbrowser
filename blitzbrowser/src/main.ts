@@ -15,6 +15,13 @@ logger.log(`# Discord: https://discord.com/invite/qZ3tCZJ2Ze`);
 logger.log('#########################################################');
 
 async function bootstrap() {
+  // Without API_KEY the guard lets every request in. Refuse to start instead
+  // of silently opening CDP and the management API to anyone who can reach us.
+  if (!process.env.API_KEY && process.env.ALLOW_NO_API_KEY !== 'true') {
+    logger.error('API_KEY is not set. Set it, or ALLOW_NO_API_KEY=true for a trusted local network.');
+    process.exit(1);
+  }
+
   const app = await NestFactory.create(AppModule);
   
   app.enableCors();

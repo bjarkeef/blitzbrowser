@@ -177,7 +177,9 @@ class BrowserInstanceProcess {
             handleSIGTERM: false,
             args: [
                 `--remote-debugging-port=${this.#cdp_port}`,
-                '--remote-debugging-address=0.0.0.0',
+                // Only BlitzBrowser itself talks to Chrome (via 127.0.0.1); nothing
+                // else on the Docker network may reach the unauthenticated CDP port.
+                '--remote-debugging-address=127.0.0.1',
                 '--no-first-run',
                 '--no-default-browser-check',
                 `--display=${this.#display}`,
@@ -188,16 +190,19 @@ class BrowserInstanceProcess {
                 '--disk-cache-dir=/dev/null', // Prevents disk caching
                 '--no-pings', // Disables hyperlink auditing pings
                 '--disable-notifications', // Prevents web push notifications
-                '--disable-features=TranslateUI', // Disables the translate UI
                 '--disable-background-networking',
                 '--disable-sync',
                 '--disable-extensions',
                 '--disable-signin-promo',
                 '--disable-gpu',
                 '--metrics-recording-only', // Record metrics, but doesn't report them
-                '--disable-features=PersistentHistograms', // Prevents generation of BrowserMetrics files on disk
+                // One flag: Chrome only honours the last --disable-features.
+                '--disable-features=TranslateUI,PersistentHistograms', // Translate UI; BrowserMetrics files on disk
                 `--start-maximized`,
                 `--proxy-server=http://127.0.0.1:${this.#proxy_server_port}`,
+                // Chrome skips the proxy for loopback by default; send it through
+                // so the network guard sees (and refuses) it too.
+                '--proxy-bypass-list=<-loopback>',
                 this.#disable_shm ? '--disable-dev-shm-usage' : undefined
             ].filter(s => typeof s === 'string'),
             env: {

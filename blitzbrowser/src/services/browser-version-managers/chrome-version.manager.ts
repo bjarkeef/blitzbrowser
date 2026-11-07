@@ -20,13 +20,16 @@ export class ChromeVersionManager implements BrowserVersionManager {
 
     #latest_version: string = '';
 
+    // puppeteer.executablePath() is async since Puppeteer 25; resolved once in loadVersions().
+    #default_executable_path: string = '';
+
     readonly #version_install_promises: Map<string, Promise<void>> = new Map();
 
     readonly family = 'chrome';
 
     getExecutablePath(version: Version): string {
         if (version === 'default') {
-            return puppeteer.executablePath();
+            return this.#default_executable_path;
         }
 
         if (version === 'latest') {
@@ -85,6 +88,8 @@ export class ChromeVersionManager implements BrowserVersionManager {
     }
 
     async loadVersions(): Promise<void> {
+        this.#default_executable_path ||= await puppeteer.executablePath();
+
         const chrome_testing_versions: ChromeTestingVersions = await (await fetch('https://googlechromelabs.github.io/chrome-for-testing/known-good-versions.json')).json();
 
         this.#chrome_versions = new Set(chrome_testing_versions.versions.filter(v => {
