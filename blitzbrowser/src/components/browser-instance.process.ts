@@ -203,6 +203,10 @@ class BrowserInstanceProcess {
                 // Chrome skips the proxy for loopback by default; send it through
                 // so the network guard sees (and refuses) it too.
                 '--proxy-bypass-list=<-loopback>',
+                // WebRTC sends STUN/TURN over UDP straight from Chrome, past the
+                // proxy and its network guard; a page could probe internal
+                // hosts that way. Only proxied (TCP) WebRTC traffic is allowed.
+                '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
                 this.#disable_shm ? '--disable-dev-shm-usage' : undefined
             ].filter(s => typeof s === 'string'),
             env: {

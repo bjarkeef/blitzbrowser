@@ -7,7 +7,10 @@ permissions:
   packages: write
 
 jobs:
+  # Only main publishes: a run from another branch would overwrite the version
+  # tag a deploy pins (or the rollback tag). Bump the version to publish again.
   create-tag:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +28,17 @@ jobs:
                 sha: context.sha
               })
             } catch (e) {
-              if (e.status === 422) { core.info("Tag already exists, skipping.") } else { throw e }
+              if (e.status !== 422) throw e
+              const { data } = await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: 'tags/${{ steps.package_version.outputs.VERSION }}',
+              })
+              if (data.object.sha !== context.sha) {
+                core.setFailed('Tag ${{ steps.package_version.outputs.VERSION }} already points at ' + data.object.sha + '. Bump blitzbrowser/package.json version instead of overwriting a published image.')
+              } else {
+                core.info('Tag already exists on this commit, rebuilding.')
+              }
             }
   build-docker-images:
     runs-on: ubuntu-latest
@@ -59,8 +72,7 @@ jobs:
           push: true
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
-          # `latest` moves only on main, so a branch build can't change what an
-          # unpinned deploy pulls. Deploy by the version tag.
+          # Runs only on main (create-tag). Deploy by the version tag, not latest.
           tags: |
-            ${{ github.ref == 'refs/heads/main' && format('ghcr.io/{0}/{1}:latest', github.repository_owner, matrix.image_suffix) || '' }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image_suffix }}:latest
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image_suffix }}:${{ steps.package_version.outputs.VERSION }}

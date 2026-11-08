@@ -12,7 +12,8 @@ This is the BlitzBrowser image the SiteCheck scan pipeline runs on.
 
 - **Reaper:** every browser instance is closed after `BROWSER_MAX_LIFETIME_MS` (1 h by default), so leaked instances can't fill the pool.
 - **Pool status:** `GET /browser-pool` also returns `active_instances`, `oldest_age_ms` and `instances[]`.
-- **Network guard** (`src/services/network-guard.util.ts`): the per-instance proxy refuses private, reserved, loopback and single-label targets, including redirect hops, iframes and WebSockets. It checks the address it actually connects to, so DNS rebinding can't get past it. Set `BLOCKED_CIDRS` to add the host's own public IP. Set `ALLOW_PRIVATE_NETWORKS=true` to turn the guard off.
+- **Network guard** (`src/services/network-guard.util.ts`): the per-instance proxy refuses private, reserved, loopback and single-label targets, including redirect hops, iframes and WebSockets. It checks the address it actually connects to, so DNS rebinding can't get past it. Set `BLOCKED_CIDRS` to add the host's own public IP; startup logs the ranges, or warns when there are none. Set `ALLOW_PRIVATE_NETWORKS=true` to turn the guard off.
+- **WebRTC** only sends UDP through the proxy (`--force-webrtc-ip-handling-policy=disable_non_proxied_udp`), so a page can't use STUN to probe internal hosts.
 - **Chrome's DevTools port** is bound to `127.0.0.1` only.
 - **Fails closed:** the server refuses to start without `API_KEY`, unless `ALLOW_NO_API_KEY=true` is set.
 - **Chrome is pinned on its own** (`CHROME_VERSION` in the Dockerfile, a Chrome for Testing stable build). That way a Chrome security release doesn't have to wait for a Puppeteer release.
@@ -21,4 +22,4 @@ This is the BlitzBrowser image the SiteCheck scan pipeline runs on.
 
 1. Bump `CHROME_VERSION` in `blitzbrowser/Dockerfile` to the current Chrome for Testing stable. Check https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json.
 2. When bumping Puppeteer, change the `FROM ghcr.io/puppeteer/puppeteer:<v>` tag and the `puppeteer` dependency together, then run `npm install` to refresh `package-lock.json`.
-3. Bump `version` in `blitzbrowser/package.json`, then run the CI/CD workflow. `latest` only moves on `main`; deploy by the version tag.
+3. Bump `version` in `blitzbrowser/package.json`, merge to `main`, then run the CI/CD workflow on `main`. It publishes nothing from other branches, and it fails rather than move an existing version tag. Deploy by the version tag, not `latest`.
