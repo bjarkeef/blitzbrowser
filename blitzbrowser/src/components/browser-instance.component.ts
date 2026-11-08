@@ -9,6 +9,7 @@ import { UserDataService } from 'src/services/user-data.service';
 import * as fsPromise from 'fs/promises';
 import { TimezoneService } from 'src/services/timezone.service';
 import { BrowserPoolService, BrowserPoolStatus } from 'src/services/browser-pool.service';
+import { guardedLookup, isBlockedHostname, PRIVATE_NETWORKS_ALLOWED } from 'src/services/network-guard.util';
 
 interface Stats {
   trgRxBytes: number;
@@ -296,11 +297,18 @@ export class BrowserInstance extends EventEmitter<BrowserInstanceEvents> {
         port: 0,
         host: '127.0.0.1',
         verbose: false,
-        prepareRequestFunction: async ({ request, connectionId }) => {
+        prepareRequestFunction: async ({ request, connectionId, hostname }) => {
           this.#proxy_connections[connectionId] = { url: request.url };
 
+          // Network guard: a rendered page must not reach private networks
+          // (Coolify, other containers, cloud metadata), whether by its first
+          // URL, a redirect, an iframe or a WebSocket. See network-guard.util.ts.
+          if (!PRIVATE_NETWORKS_ALLOWED && isBlockedHostname(hostname)) {
+            throw new ProxyChain.RequestError(`Blocked: ${hostname} is a private or reserved address.`, 403);
+          }
+
           if (!this.in_use || !this.#connection_options?.proxy_url) {
-            return {};
+            return PRIVATE_NETWORKS_ALLOWED ? {} : { dnsLookup: guardedLookup };
           }
 
           return {

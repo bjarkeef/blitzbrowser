@@ -7,7 +7,10 @@ permissions:
   packages: write
 
 jobs:
+  # Only main publishes: a run from another branch would overwrite the version
+  # tag a deploy pins (or the rollback tag). Bump the version to publish again.
   create-tag:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +28,23 @@ jobs:
                 sha: context.sha
               })
             } catch (e) {
-              if (e.status === 422) { core.info("Tag already exists, skipping.") } else { throw e }
+              if (e.status !== 422) throw e
+              const { data } = await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: 'tags/${{ steps.package_version.outputs.VERSION }}',
+              })
+              // An annotated tag points at a tag object; peel it to the commit.
+              let sha = data.object.sha
+              if (data.object.type === 'tag') {
+                const { data: tag } = await github.rest.git.getTag({ owner: context.repo.owner, repo: context.repo.repo, tag_sha: sha })
+                sha = tag.object.sha
+              }
+              if (sha !== context.sha) {
+                core.setFailed('Tag ${{ steps.package_version.outputs.VERSION }} already points at ' + sha + '. Bump blitzbrowser/package.json version instead of overwriting a published image.')
+              } else {
+                core.info('Tag already exists on this commit, rebuilding.')
+              }
             }
   build-docker-images:
     runs-on: ubuntu-latest
@@ -59,6 +78,7 @@ jobs:
           push: true
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
+          # Runs only on main (create-tag). Deploy by the version tag, not latest.
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image_suffix }}:latest
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image_suffix }}:${{ steps.package_version.outputs.VERSION }}
